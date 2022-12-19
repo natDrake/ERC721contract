@@ -1,0 +1,243 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+
+//contract uri https://ipfs.io/ipfs/QmS1BRowz3PBtGTquSBYnowepCuch8h63D2bmjbAudLv9v
+//metadata uri https://ipfs.io/ipfs/QmX1ox8SopcVzJENY4n4Es7TE27pkGRK9JhFW3pvn19nnb
+
+contract NFT721withAccessControl is ERC721,AccessControl {
+    uint256 private _tokensMinted;
+    uint256 public maxSupply;
+    string private contractUri;
+    string private metadataUri;
+
+    // bytes32 public constant NFT_OPERATOR_ROLE = keccak256("NFT_OPERATOR_ROLE");
+
+    /**
+     * @dev Constructor for GenerativeNFT contract
+     * @param _name name of the contract(collection)
+     * @param _symbol symbol ticker for the collection
+     * @param _maxSupply maximun supply possible for the generative nft collection
+     * @param _contractUri uri for contract data
+     * @param _metadataUri uri for token metadata
+     */
+    constructor(string memory _name, string memory _symbol, uint256 _maxSupply,string memory _contractUri, string memory _metadataUri) 
+        ERC721(_name, _symbol) 
+    {
+        require(_maxSupply > 0,"GNFT: MAX SUPPLY CANNOT BE 0");
+        require(bytes(_contractUri).length > 0, "GNFT: Invalid Contract URI");
+        require(bytes(_metadataUri).length > 0, "GNFT: Invalid Metadata URI");
+        maxSupply = _maxSupply;
+        contractUri = _contractUri;
+        metadataUri = _metadataUri;
+
+        // DEFAULT_ADMIN_ROLE access role allows to grant and revoke access on any role
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        // _setupRole(NFT_OPERATOR_ROLE, _msgSender());
+    }
+
+
+    /**
+     @dev modifier to check if the sender is the default admin of NgageN contract
+     * Revert if the sender is not the contract admin
+     */
+    modifier onlyAdmin() {
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
+            "GNFT: Only Admin"
+        );
+        _;
+    }
+
+    /**
+     @dev modifier to check if the sender is one of the whitelisted account aka operator
+     * Revert if the sender is not an operator
+     */
+    // modifier onlyOperator() {
+    //     require(
+    //         hasRole(NFT_OPERATOR_ROLE, _msgSender()),
+    //         "GNFT: Only Operator"
+    //     );
+    //     _;
+    // }
+
+    /**
+     * @dev Public function to get URI for contract metadata
+     */
+    function contractURI() public view returns (string memory) {
+        return contractUri;
+    }
+
+    /**
+     * @dev Public function to get token metadata URI
+     */
+    function metadataURI() public view returns (string memory) {
+        return metadataUri;
+    }
+
+    /**
+     * @dev Public function to get max supply of collection
+     */
+    function totalSupply() public view returns (uint256) {
+        return maxSupply;
+    }
+
+    /**
+     * @dev Public function to get NUMBER OF GENERATIVE ART nft's minted upto now
+     */
+    function mintCount() public view returns (uint256) {
+        return _tokensMinted;
+    }
+
+    /**
+     * @dev Public function to get URI for particular token
+     * @param id The token id for which uri will be retrieved
+     */
+    function tokenURI(uint256 id)
+        public
+        view
+        override
+        returns (string memory)
+    {
+        return
+            string(abi.encodePacked(metadataURI(),"/",Strings.toString(id)));
+    }
+
+    /**
+     * @dev Public function to set URI for contract metadata
+     * Reverts if the caller is not an admin
+     * @param _contractUri The uri that will be set as new contract metadata URI
+     */
+    function setContractURI(string memory _contractUri) public onlyAdmin {
+        require(
+            bytes(_contractUri).length > 0,
+            "GNFT: Invalid Contract URI"
+        );
+        contractUri = _contractUri;
+    }
+
+    /**
+     * @dev Public function to set URI for collection
+     * Reverts if the caller is not an operator
+     * @param _metadataUri The uri that will be set as new URI
+     */
+    function setMetadataURI(string memory _metadataUri)
+        public
+        onlyAdmin
+    {
+        require(
+            bytes(_metadataUri).length > 0,
+            "GNFT: Invalid Token URI"
+        );
+        metadataUri = _metadataUri;
+    }
+
+    function supportsInterface(bytes4 interfaceId) 
+        public 
+        view 
+        virtual 
+        override(ERC721,AccessControl)
+        returns (bool) 
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    /**
+    * Mints Generative nft's
+    * @param to The address to which the newly minted tokens will be assigned.
+    * @param _numberOfTokens number of generative nft's to be minted(20-30 in one batch)
+    */
+    function mintGNFT(address to,uint256 _numberOfTokens) external onlyAdmin{
+        require(
+            to != address(0),
+            "GNFT: Invalid address"
+        );
+        require((_tokensMinted +_numberOfTokens) <= maxSupply, "GNFT: Cannot mint more than MAX SUPPLY");
+
+        for(uint256 i = 0; i < _numberOfTokens; i++) {
+            uint256 mintIndex = _tokensMinted;
+            _mint(to, mintIndex);
+            _tokensMinted += 1;
+            //_setApprovalForAll(to, _msgSender(),true);
+        }
+    }
+
+    /**
+     * @dev Public function to burn existing tokens
+     * Reverts if the caller is not an operator
+     * @param id The token ids of tokens to be burned
+     */
+    function burnNFT(uint256 id) external onlyAdmin {
+        _burn(id);
+    }
+
+    /**
+     * @dev Public function to transfer existing tokens of token type ids from one account to another
+     * @param _from The address from which the tokens transfer will be occur.
+     * @param _to The address which will receive the tokens.
+     * Requirements -
+     *   o to cannot be a null address
+     *   o from must have at least amount tokens of token type id
+     *   o if to is a contract address than it must implement IERC1155Receiver.onERC1155Received and returns the magic acceptance value
+     * @param _id The token id of tokens to be transferred
+     * @param data custom bytes data on transferring
+     */
+    function safeTransferGnft(
+        address _from,
+        address _to,
+        uint256 _id,
+        bytes memory data
+    ) external {
+        require(
+            _from == _msgSender() ||
+                isApprovedForAll(_from, _msgSender()),
+            "GNFT: caller unapproved"
+        );
+        safeTransferFrom(_from, _to, _id, data);
+    }
+
+    /**
+     * @dev Public function to transfer existing tokens of token type ids from one account to another
+     * @param _from The address from which the tokens transfer will be occur.
+     * @param _to The address which will receive the tokens.
+     * Requirements -
+     *   o to cannot be a null address
+     *   o from must have at least amount tokens of token type id
+     *   o if to is a contract address than it must implement IERC1155Receiver.onERC1155Received and returns the magic acceptance value
+     * @param _id The token id of tokens to be transferred
+     * @param data custom bytes data on transferring
+     */
+    function approveAndsafeTransferGnft(
+        address _from,
+        address _to,
+        uint256 _id,
+        bytes memory data
+    ) external {
+        //_setApprovalForAll(_from, _msgSender(),true);
+        safeTransferFrom(_from, _to, _id, data);
+    }
+
+    // /**
+    //  * @dev Public function to approve existing tokens of particular token id from account to operator
+    //  * @param account The address from which the tokens transfer will be occur.
+    //  * @param operator The address which will receive the tokens.
+    //  * @param id The token id of token to be approved.
+    //  * @param approved The approval status.
+    //  */
+    // function setApprovalForAll(
+    //     address account,
+    //     address operator,
+    //     uint256 id,
+    //     bool approved
+    // ) external {
+    //     require(
+    //         _msgSender() == account || hasRole(NFT_OPERATOR_ROLE, _msgSender()),
+    //         "NN: Only operator or token holder"
+    //     );
+    //     operatorTokenApprovals[account][operator][id] = approved;
+    //     emit ApprovalForToken(account, operator, id, approved);
+    // }
+}
